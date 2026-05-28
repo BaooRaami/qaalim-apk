@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Qaalim</title>
+  <link rel="stylesheet" href="styles.css" />
+<base target="_blank">
+</head>
+
+<body>
+  <div id="app">
+    <div class="app-shell">
+      <header class="top-bar">
+        <div class="top-bar-inner">
+          <span class="app-wordmark">Qaalim</span>
+          <button class="icon-btn" v-html="icons.search" aria-label="Search"></button>
+        </div>
+      </header>
+      <div v-show="activeTab === 'home'" class="home-chips-bar">
+        <div class="home-chips">
+          <button v-for="chip in homeChips" :key="chip.id" class="chip" :class="{ active: activeChip === chip.id }" @click="onChipClick(chip.id)">
+            <span class="chip-icon" v-html="icons[chip.icon]"></span>
+            <span class="chip-label">{{ chip.label }}</span>
+          </button>
+        </div>
+      </div>
+      <main class="page-content">
+        <section class="page" v-show="activeTab === 'home'">
+          <div v-if="activeChip === 'today' || activeChip === 'date' || activeChip === 'author'" class="articles-section">
+            <div v-if="loading" class="articles-list">
+              <div v-for="(c, i) in skeletonCards" :key="i" class="skeleton-card">
+                <div class="skeleton-card-title skeleton-shimmer"></div>
+                <div class="skeleton-card-meta">
+                  <div class="skeleton-card-author skeleton-shimmer"></div>
+                  <div class="skeleton-card-dot"></div>
+                  <div class="skeleton-card-date skeleton-shimmer"></div>
+                </div>
+              </div>
+            </div>
+            <p v-else-if="error" class="articles-status error">{{ error }}</p>
+            <div v-else class="articles-list">
+              <div v-for="a in (activeChip === 'today' ? todayArticles : activeChip === 'date' ? dateArticles : authorArticles)" :key="a.url"
+                class="article-card" :class="{ unread: !readUrls.has(a.url) }" @click="openArticle(a)">
+                <span v-if="cachedUrls.has(a.url)" class="article-offline-mark" v-html="icons.offline"></span>
+                <h3 class="article-title">{{ a.title }}</h3>
+                <div class="article-meta">
+                  <span class="article-author">{{ a.author }}</span>
+                  <span class="article-sep"></span>
+                  <span class="article-date">{{ a.date }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="activeChip === 'author' && authorHasMore" class="load-more-wrap">
+              <button v-if="!loadingMore" class="btn-primary small" @click="loadMoreAuthorArticles()">Load More</button>
+              <div v-else class="skeleton-card" style="margin-top:10px;">
+                <div class="skeleton-card-title skeleton-shimmer"></div>
+                <div class="skeleton-card-meta">
+                  <div class="skeleton-card-author skeleton-shimmer"></div>
+                  <div class="skeleton-card-dot"></div>
+                  <div class="skeleton-card-date skeleton-shimmer"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="page" v-show="activeTab === 'feed'">
+          <div class="section-header">
+            <h2 class="section-title">Your Feed</h2>
+            <button class="icon-btn" v-html="icons.filter" aria-label="Filter"></button>
+          </div>
+          <div class="empty-state">
+            <div class="empty-icon" v-html="icons.feed"></div>
+            <p class="empty-text">No feeds added yet.</p>
+          </div>
+        </section>
+        <section class="page" v-show="activeTab === 'saved'">
+          <div class="section-header">
+            <h2 class="section-title">Saved</h2>
+          </div>
+          <div v-if="savedArticles.length === 0" class="empty-state">
+            <div class="empty-icon" v-html="icons.saved"></div>
+            <p class="empty-text">Articles you save will appear here.</p>
+          </div>
+          <div v-else class="articles-list">
+            <div v-for="a in savedArticles" :key="a.url"
+              class="article-card" :class="{ unread: !readUrls.has(a.url) }" @click="openSavedArticle(a)">
+              <span v-if="a.paragraphs && a.paragraphs.length > 0" class="article-offline-mark" v-html="icons.offline"></span>
+              <h3 class="article-title">{{ a.title }}</h3>
+              <div class="article-meta">
+                <span class="article-author">{{ a.author }}</span>
+                <span class="article-sep"></span>
+                <span class="article-date">{{ a.date }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="page" v-show="activeTab === 'settings'">
+          <div class="section-header">
+            <h2 class="section-title">Settings</h2>
+          </div>
+          <div class="section-label" style="margin-top:8px;">Offline Caching</div>
+          <div class="settings-group">
+            <div class="settings-item">
+              <span class="settings-item-label">Download All Articles (Home)</span>
+              <div class="toggle-wrap" @click="toggleDownloadAllHome()">
+                <div class="toggle-track" :class="{ on: downloadAllHomeState }"></div>
+              </div>
+            </div>
+            <div class="settings-item">
+              <span class="settings-item-label">Download All Articles (Feed)</span>
+              <div class="toggle-wrap">
+                <div class="toggle-track"></div>
+              </div>
+            </div>
+            <div class="settings-item">
+              <span class="settings-item-label">Download All Articles (Saved)</span>
+              <div class="toggle-wrap" @click="toggleDownloadAllSaved()">
+                <div class="toggle-track" :class="{ on: downloadAllSavedState }"></div>
+              </div>
+            </div>
+          </div>
+          <div class="app-version">Qaalim &nbsp;·&nbsp; v0.1.0</div>
+        </section>
+      </main>
+
+      <!-- Article View -->
+      <div class="article-view" v-if="activeArticle">
+        <div class="article-view-body" ref="articleBodyRef">
+          <div v-if="articleLoading" class="skeleton-wrap">
+            <div class="skeleton-title skeleton-shimmer"></div>
+            <div v-for="(line, i) in skeletonLines" :key="i" class="skeleton-line skeleton-shimmer" :class="line.class"></div>
+          </div>
+          <div v-else-if="articleError" class="articles-status error">{{ articleError }}</div>
+          <div v-else>
+            <h1 class="article-view-title" v-if="articleContent.title">{{ articleContent.title }}</h1>
+            <div class="article-view-text" dir="rtl">
+              <p v-for="(para, i) in articleContent.paragraphs" :key="i"
+                :style="{ fontSize: fontSize + 'px', lineHeight: lineHeight, textAlign: textAlign }">{{ para }}</p>
+            </div>
+          </div>
+        </div>
+        <div class="article-pill-bar">
+          <button class="pill-btn pill-btn--back" @click="closeArticle()" aria-label="Back" v-html="icons.back"></button>
+          <div class="pill-divider"></div>
+          <button class="pill-btn" aria-label="Share" v-html="icons.share"></button>
+          <button class="pill-btn" :class="{ active: isArticleSaved }" @click="toggleSaveArticle()" aria-label="Save" v-html="isArticleSaved ? icons.bookmarkFilled : icons.bookmark"></button>
+          <button class="pill-btn" aria-label="Text Options" @click="openTextOptions()" v-html="icons.textOptions"></button>
+          <div class="pill-divider"></div>
+          <button class="pill-btn" :class="{ active: autoScrollActive }" @click="toggleAutoScroll()" aria-label="Auto Scroll" v-html="icons.autoScroll"></button>
+        </div>
+      </div>
+
+      <!-- Text Options Sheet -->
+      <div class="sheet-overlay" v-if="textOptionsOpen" @click.self="closeTextOptions()">
+        <div class="bottom-sheet text-options-sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">Text Options</div>
+
+          <div class="text-option-row">
+            <span class="text-option-label">Font Size</span>
+            <div class="text-option-control">
+              <button class="text-option-btn" @click="adjustFontSize(-fontSizeStep)"><span v-html="icons.minus"></span></button>
+              <span class="text-option-value">{{ fontSize }}</span>
+              <button class="text-option-btn" @click="adjustFontSize(fontSizeStep)"><span v-html="icons.plus"></span></button>
+            </div>
+          </div>
+
+          <div class="text-option-row">
+            <span class="text-option-label">Line Height</span>
+            <div class="text-option-control">
+              <button class="text-option-btn" @click="adjustLineHeight(-lineHeightStep)"><span v-html="icons.minus"></span></button>
+              <span class="text-option-value">{{ lineHeight }}</span>
+              <button class="text-option-btn" @click="adjustLineHeight(lineHeightStep)"><span v-html="icons.plus"></span></button>
+            </div>
+          </div>
+
+          <div class="text-option-row">
+            <span class="text-option-label">Text Align</span>
+            <div class="text-option-align">
+              <button class="align-btn" :class="{ active: textAlign === 'right' }" @click="setTextAlign('right')" v-html="icons.alignRight"></button>
+              <button class="align-btn" :class="{ active: textAlign === 'center' }" @click="setTextAlign('center')" v-html="icons.alignCenter"></button>
+              <button class="align-btn" :class="{ active: textAlign === 'left' }" @click="setTextAlign('left')" v-html="icons.alignLeft"></button>
+              <button class="align-btn" :class="{ active: textAlign === 'justify' }" @click="setTextAlign('justify')" v-html="icons.alignJustify"></button>
+            </div>
+          </div>
+
+          <div class="text-option-row">
+            <span class="text-option-label">Scroll Speed</span>
+            <div class="text-option-control">
+              <button class="text-option-btn" @click="adjustScrollSpeed(-scrollSpeedStep)"><span v-html="icons.minus"></span></button>
+              <span class="text-option-value">{{ scrollSpeed }}</span>
+              <button class="text-option-btn" @click="adjustScrollSpeed(scrollSpeedStep)"><span v-html="icons.plus"></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Author Sheet -->
+      <div class="sheet-overlay" v-if="authorSheetOpen" @click.self="closeAuthorSheet()">
+        <div class="bottom-sheet author-sheet">
+          <div class="sheet-handle"></div>
+          <div class="author-sheet-search">
+            <input
+              class="author-search-input"
+              type="text"
+              placeholder="Search authors..."
+              v-model="authorSearch"
+            />
+          </div>
+          <div class="author-sheet-scroll">
+            <div v-if="followedAuthorsList.length > 0">
+              <div class="author-section-label">Followed Authors</div>
+              <div class="author-list">
+                <div v-for="name in followedAuthorsList" :key="'f-' + name" class="author-row" @click="scrapeAuthor(name)">
+                  <span class="author-row-name">{{ name }}</span>
+                  <button class="author-follow-btn author-follow-btn--following" @click.stop="toggleFollowAuthor(name)">Unfollow</button>
+                </div>
+              </div>
+            </div>
+            <div class="author-section-label" style="margin-top: 16px;">All Authors</div>
+            <div class="author-list">
+              <div v-for="name in filteredAuthors" :key="'a-' + name" class="author-row" @click="scrapeAuthor(name)">
+                <span class="author-row-name">{{ name }}</span>
+                <button
+                  class="author-follow-btn"
+                  :class="{ 'author-follow-btn--following': followedAuthors.has(name) }"
+                  @click.stop="toggleFollowAuthor(name)"
+                >{{ followedAuthors.has(name) ? 'Unfollow' : 'Follow' }}</button>
+              </div>
+            </div>
+            <div v-if="hasMoreAuthors" ref="authorSentinelRef" class="author-sentinel"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden Date Picker -->
+      <input
+        ref="dateInputRef"
+        type="date"
+        :max="maxDate"
+        v-model="selectedDate"
+        class="hidden-date-input"
+        @change="onDateChange"
+      >
+      <!-- Toast -->
+      <div class="toast" :class="{ visible: toastVisible }">{{ toastMessage }}</div>
+      <nav class="bottom-nav">        
+        <button v-for="tab in tabs" :key="tab.id" class="nav-tab" :class="{ active: activeTab === tab.id }" @click="activeTab = tab.id" :aria-label="tab.label">
+          <span class="nav-icon" v-html="icons[tab.icon]"></span>
+          <span class="nav-label">{{ tab.label }}</span>
+        </button>
+      </nav>
+    </div>
+  </div>
+  <script src="0libs/vue.global.prod.js"></script>
+  <script src="0libs/icons.js"></script>
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
