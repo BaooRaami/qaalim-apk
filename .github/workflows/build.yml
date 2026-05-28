@@ -1,0 +1,54 @@
+name: Build Qaalim APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Copy app icon
+        run: |
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+          cp 0libs/app-icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cp 0libs/app-icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: qaalim-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
