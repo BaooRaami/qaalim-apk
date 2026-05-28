@@ -1,7 +1,7 @@
 {
   "appId": "com.qaalim.app",
   "appName": "Qaalim",
-  "webDir": ".",
+  "webDir": "www",
   "android": {
     "allowMixedContent": true
   },

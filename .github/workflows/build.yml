@@ -27,6 +27,9 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Prepare www folder
+        run: echo "www folder already in repo"
+
       - name: Add Android platform
         run: npx cap add android
 
@@ -36,8 +39,8 @@ jobs:
       - name: Copy app icon
         run: |
           mkdir -p android/app/src/main/res/mipmap-xxxhdpi
-          cp 0libs/app-icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-          cp 0libs/app-icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+          cp www/0libs/app-icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cp www/0libs/app-icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
