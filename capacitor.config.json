@@ -1,0 +1,11 @@
+{
+  "appId": "com.qaalim.app",
+  "appName": "Qaalim",
+  "webDir": ".",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
