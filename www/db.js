@@ -1,11 +1,12 @@
 const db = (() => {
   const DB_NAME    = 'qaalim_db';
-  const DB_VERSION = 5;
+  const DB_VERSION = 6;
   const STORE      = 'articles';
   const CACHE      = 'daily_cache';
   const OPENED     = 'opened_cache';
   const READ       = 'read_cache';
   const FOLLOWED   = 'followed_authors';
+  const SETTINGS   = 'settings';
 
   let _db = null;
 
@@ -34,6 +35,9 @@ const db = (() => {
         if (!database.objectStoreNames.contains(FOLLOWED)) {
           database.createObjectStore(FOLLOWED, { keyPath: 'name' });
         }
+        if (!database.objectStoreNames.contains(SETTINGS)) {
+          database.createObjectStore(SETTINGS, { keyPath: 'key' });
+        }
       };
 
       request.onsuccess = (event) => {
@@ -55,6 +59,10 @@ const db = (() => {
 
   function getCacheStore(mode = 'readonly') {
     return _db.transaction(CACHE, mode).objectStore(CACHE);
+  }
+
+  function getSettingsStore(mode = 'readonly') {
+    return _db.transaction(SETTINGS, mode).objectStore(SETTINGS);
   }
 
   function getOpenedStore(mode = 'readonly') {
@@ -104,11 +112,11 @@ const db = (() => {
   }
 
   function saveTextSettings(settings) {
-    return run(getCacheStore('readwrite').put({ date: '__text_settings__', settings }));
+    return run(getSettingsStore('readwrite').put({ key: 'text', settings }));
   }
 
   function getTextSettings() {
-    return run(getCacheStore().get('__text_settings__')).then(r => {
+    return run(getSettingsStore().get('text')).then(r => {
       return r?.settings || null;
     });
   }

@@ -18,12 +18,15 @@
           <button class="icon-btn" v-html="icons.search" aria-label="Search"></button>
         </div>
       </header>
-      <div v-show="activeTab === 'home'" class="home-chips-bar">
-        <div class="home-chips">
-          <button v-for="chip in homeChips" :key="chip.id" class="chip" :class="{ active: activeChip === chip.id }" @click="onChipClick(chip.id)">
-            <span class="chip-icon" v-html="icons[chip.icon]"></span>
-            <span class="chip-label">{{ chip.label }}</span>
-          </button>
+      <div v-show="activeTab === 'home'" class="home-tabs-bar">
+        <div class="home-tabs">
+          <template v-for="(chip, index) in homeTabs" :key="chip.id">
+            <button class="home-tab" :class="{ active: activeChip === chip.id }" @click="onChipClick(chip.id)">
+              <span class="home-tab-icon" v-html="icons[chip.icon]"></span>
+              <span class="home-tab-label">{{ chip.label }}</span>
+            </button>
+            <div v-if="index < homeTabs.length - 1" class="home-tab-divider"></div>
+          </template>
         </div>
       </div>
       <main class="page-content">
@@ -52,9 +55,9 @@
                 </div>
               </div>
             </div>
-            <div v-if="activeChip === 'author' && authorHasMore" class="load-more-wrap">
-              <button v-if="!loadingMore" class="btn-primary small" @click="loadMoreAuthorArticles()">Load More</button>
-              <div v-else class="skeleton-card" style="margin-top:10px;">
+            <div v-if="activeChip === 'author'" class="load-more-wrap">
+              <button v-if="authorHasMore && !loadingMore" class="btn-primary small" @click="loadMoreAuthorArticles()">Load More</button>
+              <div v-else-if="loadingMore" class="skeleton-card" style="margin-top:10px;">
                 <div class="skeleton-card-title skeleton-shimmer"></div>
                 <div class="skeleton-card-meta">
                   <div class="skeleton-card-author skeleton-shimmer"></div>
@@ -62,6 +65,7 @@
                   <div class="skeleton-card-date skeleton-shimmer"></div>
                 </div>
               </div>
+              <p v-else-if="!authorHasMore && authorArticles.length > 0" class="articles-status">All caught up ✓</p>
             </div>
           </div>
         </section>

@@ -3,7 +3,10 @@
   "appName": "Qaalim",
   "webDir": "www",
   "android": {
-    "allowMixedContent": true
+    "allowMixedContent": true,
+    "minSdkVersion": 22,
+    "targetSdkVersion": 34,
+    "compileSdkVersion": 34
   },
   "server": {
     "androidScheme": "https"

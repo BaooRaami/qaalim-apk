@@ -29,6 +29,7 @@ createApp({
     const articleError = ref(null);
 
     const textOptionsOpen = ref(false);
+    const articleBodyRef = ref(null);
     const downloadAllHomeState = ref(false);
     const downloadAllSavedState = ref(false);
     const savedArticles = ref([]);
@@ -299,14 +300,12 @@ createApp({
       }
     }
 
-    const homeChips = computed(() => {
-      const all = [
+    const homeTabs = computed(() => {
+      return [
         { id: 'today', label: 'Today', icon: 'today' },
         { id: 'author', label: activeAuthorLabel.value || 'Pick an Author', icon: 'author' },
         { id: 'date', label: selectedDateLabel.value || 'Pick a Date', icon: 'date' },
       ];
-      if (activeChip.value === 'today') return all;
-      return [all.find(c => c.id === activeChip.value), ...all.filter(c => c.id !== activeChip.value)];
     });
 
     const tabs = [
@@ -580,7 +579,7 @@ createApp({
       toastTimer = setTimeout(() => { toastVisible.value = false; }, 3000);
     }
 
-    function onDateChange() {      
+    function onDateChange() {
       if (!selectedDate.value) return;
       selectedDateLabel.value = formatDisplayDate(selectedDate.value);
       const [y, m, d] = selectedDate.value.split('-');
@@ -662,20 +661,59 @@ createApp({
     const skeletonLines = 'lllslllsllls'.replace(/\s/g, '').split('').map(c => ({ class: c === 'l' ? 'long' : 'short' }));
     const skeletonCards = 'ttttt'.split('').map(() => ({}));
 
+    let scrollPauseTimer = null;
+    let isAutoScrolling = false;
+    const SCROLL_RESUME_DELAY = 500;
+
+    function pauseAutoScrollTemporarily() {
+      if (!autoScrollActive.value || isAutoScrolling) return;
+      if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+      if (scrollPauseTimer) clearTimeout(scrollPauseTimer);
+      scrollPauseTimer = setTimeout(() => {
+        if (autoScrollActive.value && !scrollInterval) {
+          scrollInterval = setInterval(() => {
+            const body = articleBodyRef.value || document.querySelector('.article-view-body');
+            if (!body) return;
+            isAutoScrolling = true;
+            body.scrollBy({ top: scrollSpeed.value, behavior: 'auto' });
+            setTimeout(() => { isAutoScrolling = false; }, 50);
+            if (body.scrollTop + body.clientHeight >= body.scrollHeight - 2) {
+              autoScrollActive.value = false;
+            }
+          }, 120);
+        }
+      }, SCROLL_RESUME_DELAY);
+    }
+
     watch(autoScrollActive, (isActive) => {
       if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+      if (scrollPauseTimer) clearTimeout(scrollPauseTimer);
       if (!isActive) return;
       scrollInterval = setInterval(() => {
-        const body = document.querySelector('.article-view-body');
+        const body = articleBodyRef.value || document.querySelector('.article-view-body');
         if (!body) return;
-        body.scrollBy({ top: scrollSpeed.value, behavior: 'smooth' });
+        isAutoScrolling = true;
+        body.scrollBy({ top: scrollSpeed.value, behavior: 'auto' });
+        setTimeout(() => { isAutoScrolling = false; }, 50);
         if (body.scrollTop + body.clientHeight >= body.scrollHeight - 2) {
           autoScrollActive.value = false;
         }
       }, 120);
     });
 
-    watch(activeArticle, () => { autoScrollActive.value = false; });
+    watch(activeArticle, () => { 
+      autoScrollActive.value = false; 
+      if (scrollPauseTimer) clearTimeout(scrollPauseTimer);
+    });
+
+    watch(articleBodyRef, (el) => {
+      if (!el) return;
+      const handler = pauseAutoScrollTemporarily;
+      el.addEventListener('scroll', handler, { passive: true });
+      el.addEventListener('touchstart', handler, { passive: true });
+      el.addEventListener('touchmove', handler, { passive: true });
+      el.addEventListener('mousedown', handler, { passive: true });
+    });
     watch(authorSearch, () => { authorPage.value = 1; });
     watch(authorSheetOpen, async (val) => {
       if (val) { await Vue.nextTick(); setupAuthorObserver(); }
@@ -687,6 +725,7 @@ createApp({
     });
 
     function onChipClick(chipId) {
+      error.value = null;
       if (chipId === 'date') {
         activeChip.value = 'date';
         openDateSheet();
@@ -720,7 +759,7 @@ createApp({
     });
 
     return {
-      activeTab, activeChip, homeChips, tabs, icons,
+      activeTab, activeChip, homeTabs, tabs, icons, articleBodyRef,
       toastMessage, toastVisible, activeArticle, openArticle, closeArticle,
       todayArticles, dateArticles, loading, error,
       dateInputRef, selectedDate, maxDate, selectedDateLabel,
