@@ -48,6 +48,7 @@ createApp({
     const scrollSpeedMax = 10;
     const scrollSpeedStep = 1;
     const scrollSpeed = ref(1);
+    const theme = ref('midnight');
 
     // ── Author Sheet State ───────────────────────────────────────────
     const authorSheetOpen = ref(false);
@@ -80,6 +81,13 @@ createApp({
     function adjustScrollSpeed(delta) {
       const next = scrollSpeed.value + delta;
       if (next >= scrollSpeedMin && next <= scrollSpeedMax) scrollSpeed.value = next;
+    }
+
+    function setTheme(newTheme) {
+      theme.value = newTheme;
+      document.documentElement.classList.remove('theme-midnight', 'theme-warm-dark', 'theme-paper', 'theme-forest', 'theme-slate');
+      document.documentElement.classList.add('theme-' + newTheme);
+      saveSettings();
     }
 
     async function openAuthorSheet() {
@@ -131,13 +139,14 @@ createApp({
         showToast('Article removed from Saved');
       } else {
         const article = { url: a.url, title: a.title, author: a.author, date: a.date, savedAt: Date.now() };
-        if (downloadAllSavedState.value) {
+        if (downloadAllSavedState.value || articleContent.value.title) {
           try {
             const proxyUrl = buildProxyUrl(a.url);
             const html = await fetch(proxyUrl).then(r => r.text());
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const parsed = parseUrduContent(doc);
             if (parsed) {
+              article.urduTitle = parsed.title || a.title;
               article.paragraphs = parsed.paragraphs;
             }
           } catch (e) { /* fetch failed, save without paragraphs */ }
@@ -159,7 +168,7 @@ createApp({
       try {
         const cached = await db.getArticle(article.url);
         if (cached && cached.paragraphs && cached.paragraphs.length > 0) {
-          articleContent.value = { title: cached.title, paragraphs: cached.paragraphs };
+          articleContent.value = { title: cached.urduTitle || cached.title || article.title, paragraphs: cached.paragraphs };
           articleLoading.value = false;
           return;
         }
@@ -175,7 +184,7 @@ createApp({
         }
         articleContent.value = parsed;
         if (downloadAllSavedState.value) {
-          await db.saveArticle({ url: article.url, title: article.title, author: article.author, date: article.date, paragraphs: parsed.paragraphs, savedAt: article.savedAt || Date.now() });
+          await db.saveArticle({ url: article.url, title: article.title, author: article.author, date: article.date, urduTitle: parsed.title || article.urduTitle || article.title, paragraphs: parsed.paragraphs, savedAt: article.savedAt || Date.now() });
           await refreshSavedArticles();
         }
       } catch (e) {
@@ -285,7 +294,7 @@ createApp({
     }
 
     function saveSettings() {
-      db.saveTextSettings({ fontSize: fontSize.value, lineHeight: lineHeight.value, textAlign: textAlign.value, scrollSpeed: scrollSpeed.value, downloadAllHome: downloadAllHomeState.value, downloadAllSaved: downloadAllSavedState.value });
+      db.saveTextSettings({ fontSize: fontSize.value, lineHeight: lineHeight.value, textAlign: textAlign.value, scrollSpeed: scrollSpeed.value, downloadAllHome: downloadAllHomeState.value, downloadAllSaved: downloadAllSavedState.value , theme: theme.value });
     }
 
     async function loadTextSettings() {
@@ -297,6 +306,9 @@ createApp({
         scrollSpeed.value = saved.scrollSpeed ?? 3;
         downloadAllHomeState.value = saved.downloadAllHome ?? false;
         downloadAllSavedState.value = saved.downloadAllSaved ?? false;
+      
+        theme.value = saved.theme ?? 'midnight';
+        document.documentElement.classList.add('theme-' + theme.value);
       }
     }
 
@@ -657,6 +669,30 @@ createApp({
     }
 
     let scrollInterval = null;
+    let wakeLockSentinel = null;
+
+    async function requestWakeLock() {
+      if (!('wakeLock' in navigator)) return;
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request('screen');
+        wakeLockSentinel.addEventListener('release', () => {
+          wakeLockSentinel = null;
+        });
+      } catch (e) { /* silently fail on unsupported browsers */ }
+    }
+
+    function releaseWakeLock() {
+      if (wakeLockSentinel) {
+        wakeLockSentinel.release();
+        wakeLockSentinel = null;
+      }
+    }
+
+    async function reacquireWakeLockIfNeeded() {
+      if (autoScrollActive.value && !wakeLockSentinel) {
+        await requestWakeLock();
+      }
+    }
 
     const skeletonLines = 'lllslllsllls'.replace(/\s/g, '').split('').map(c => ({ class: c === 'l' ? 'long' : 'short' }));
     const skeletonCards = 'ttttt'.split('').map(() => ({}));
@@ -688,7 +724,8 @@ createApp({
     watch(autoScrollActive, (isActive) => {
       if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
       if (scrollPauseTimer) clearTimeout(scrollPauseTimer);
-      if (!isActive) return;
+      if (!isActive) { releaseWakeLock(); return; }
+      requestWakeLock();
       scrollInterval = setInterval(() => {
         const body = articleBodyRef.value || document.querySelector('.article-view-body');
         if (!body) return;
@@ -703,6 +740,7 @@ createApp({
 
     watch(activeArticle, () => { 
       autoScrollActive.value = false; 
+      releaseWakeLock();
       if (scrollPauseTimer) clearTimeout(scrollPauseTimer);
     });
 
@@ -747,6 +785,12 @@ createApp({
       if (v === 'today' && todayArticles.value.length === 0) loadTodayArticles();
     });
 
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        reacquireWakeLockIfNeeded();
+      }
+    });
+
     onMounted(async () => {
       await db.init();
       loadTodayArticles();
@@ -769,6 +813,7 @@ createApp({
       adjustFontSize, adjustLineHeight, setTextAlign,
       openTextOptions, closeTextOptions, fontSizeStep, lineHeightStep, scrollSpeedStep,
       autoScrollActive, toggleAutoScroll, scrollSpeed, adjustScrollSpeed,
+      theme, setTheme,
       downloadAllHomeState, toggleDownloadAllHome, downloadAllSavedState, toggleDownloadAllSaved,
       cachedUrls, refreshCachedUrls, readUrls, refreshReadUrls,
       savedArticles, refreshSavedArticles, isArticleSaved, toggleSaveArticle, openSavedArticle,

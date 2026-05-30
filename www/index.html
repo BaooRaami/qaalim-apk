@@ -7,6 +7,7 @@
   <title>Qaalim</title>
   <link rel="stylesheet" href="styles.css" />
 <base target="_blank">
+<base target="_blank">
 </head>
 
 <body>
@@ -104,7 +105,31 @@
           <div class="section-header">
             <h2 class="section-title">Settings</h2>
           </div>
-          <div class="section-label" style="margin-top:8px;">Offline Caching</div>
+                    <div class="section-label" style="margin-top:8px;">Appearance</div>
+          <div class="settings-group">
+            <div class="settings-item">
+              <span class="settings-item-label">Theme</span>
+              <div class="theme-picker-inline">
+                <button class="theme-swatch" :class="{ active: theme === 'midnight' }" @click="setTheme('midnight')" title="Midnight" aria-label="Midnight theme">
+                  <span class="theme-swatch-inner" style="background:#0a0a0a;"></span>
+                </button>
+                <button class="theme-swatch" :class="{ active: theme === 'warm-dark' }" @click="setTheme('warm-dark')" title="Warm Dark" aria-label="Warm dark theme">
+                  <span class="theme-swatch-inner" style="background:#6b5344;"></span>
+                </button>
+                <button class="theme-swatch" :class="{ active: theme === 'paper' }" @click="setTheme('paper')" title="Paper" aria-label="Paper theme">
+                  <span class="theme-swatch-inner" style="background:#f4ecd8;"></span>
+                </button>
+                <button class="theme-swatch" :class="{ active: theme === 'forest' }" @click="setTheme('forest')" title="Forest" aria-label="Forest theme">
+                  <span class="theme-swatch-inner" style="background:#2d3a2d;"></span>
+                </button>
+                <button class="theme-swatch" :class="{ active: theme === 'slate' }" @click="setTheme('slate')" title="Slate" aria-label="Slate theme">
+                  <span class="theme-swatch-inner" style="background:#2d3f56;"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+<div class="section-label" style="margin-top:8px;">Offline Caching</div>
           <div class="settings-group">
             <div class="settings-item">
               <span class="settings-item-label">Download All Articles (Home)</span>
@@ -163,6 +188,27 @@
           <div class="sheet-title">Text Options</div>
 
           <div class="text-option-row">
+            <span class="text-option-label">Theme</span>
+            <div class="text-option-align">
+              <button class="theme-swatch" :class="{ active: theme === 'midnight' }" @click="setTheme('midnight')" title="Midnight" aria-label="Midnight theme">
+                <span class="theme-swatch-inner" style="background:#0a0a0a;"></span>
+              </button>
+              <button class="theme-swatch" :class="{ active: theme === 'warm-dark' }" @click="setTheme('warm-dark')" title="Warm Dark" aria-label="Warm dark theme">
+                <span class="theme-swatch-inner" style="background:#6b5344;"></span>
+              </button>
+              <button class="theme-swatch" :class="{ active: theme === 'paper' }" @click="setTheme('paper')" title="Paper" aria-label="Paper theme">
+                <span class="theme-swatch-inner" style="background:#f4ecd8;"></span>
+              </button>
+              <button class="theme-swatch" :class="{ active: theme === 'forest' }" @click="setTheme('forest')" title="Forest" aria-label="Forest theme">
+                <span class="theme-swatch-inner" style="background:#2d3a2d;"></span>
+              </button>
+              <button class="theme-swatch" :class="{ active: theme === 'slate' }" @click="setTheme('slate')" title="Slate" aria-label="Slate theme">
+                <span class="theme-swatch-inner" style="background:#2d3f56;"></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="text-option-row">
             <span class="text-option-label">Font Size</span>
             <div class="text-option-control">
               <button class="text-option-btn" @click="adjustFontSize(-fontSizeStep)"><span v-html="icons.minus"></span></button>
@@ -197,6 +243,8 @@
               <span class="text-option-value">{{ scrollSpeed }}</span>
               <button class="text-option-btn" @click="adjustScrollSpeed(scrollSpeedStep)"><span v-html="icons.plus"></span></button>
             </div>
+
+
           </div>
         </div>
       </div>
