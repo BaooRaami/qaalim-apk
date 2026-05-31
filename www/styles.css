@@ -130,7 +130,6 @@ a { text-decoration: none; color: inherit; }
 .filter-bar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .filter-btn { height: 36px; padding: 0 10px; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 5px; color: var(--text-secondary); background: var(--bg-surface); border: 1px solid var(--border); transition: background 0.2s, color 0.2s, border-color 0.2s; }
 .filter-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
-.filter-btn-label { font-size: 12px; font-weight: 500; font-family: var(--font-body); }
 .filter-btn:hover { background: var(--bg-raised); color: var(--text-primary); }
 .filter-btn.active { background: var(--accent-glow); border-color: var(--accent-dim); color: var(--accent); }
 
@@ -254,3 +253,23 @@ a { text-decoration: none; color: inherit; }
 .author-follow-btn:hover { border-color: var(--accent-dim); color: var(--text-primary); }
 .author-follow-btn--following { background: var(--accent-glow); border-color: var(--accent-dim); color: var(--accent); }
 .author-sentinel { height: 32px; width: 100%; }
+
+/* ─── App Loader ───────────────────────────────────────────────── */
+.app-loader { position: fixed; inset: 0; z-index: 1000; background: var(--bg-base); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; animation: pageFadeIn 0.3s var(--ease); }
+.app-loader-ring { width: 48px; height: 48px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+.app-loader-text { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.02em; }
+.app-loader-text::after { content: '.'; color: var(--accent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.app-loading .page-content { opacity: 0; pointer-events: none; }
+
+/* ─── Search Bar ───────────────────────────────────────────────── */
+.search-bar { padding: 0 12px; gap: 8px; }
+.search-input-wrap { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
+.search-input { width: 100%; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 8px 38px 8px 16px; font-size: 15px; color: var(--text-primary); font-family: var(--font-body); outline: none; transition: border-color 0.2s; }
+.search-input::placeholder { color: var(--text-muted); }
+.search-input:focus { border-color: var(--accent-dim); }
+.search-clear-btn { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: var(--radius-pill); display: flex; align-items: center; justify-content: center; color: var(--text-muted); background: transparent; border: none; cursor: pointer; transition: color 0.2s, background 0.2s; padding: 0; }
+.search-clear-btn:hover { color: var(--text-primary); background: var(--bg-overlay); }
+.search-clear-btn svg { width: 16px; height: 16px; }
+.search-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 10px; text-align: center; }
+.search-empty-text { font-size: 14px; color: var(--text-muted); }

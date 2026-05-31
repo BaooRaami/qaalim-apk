@@ -2,8 +2,12 @@ const { createApp, ref, computed, onMounted, watch } = Vue;
 
 createApp({
   setup() {
+    const appReady = ref(false);
     const activeTab = ref('home');
     const activeArticle = ref(null);
+    const searchActive = ref(false);
+    const searchQuery = ref('');
+    const searchInputRef = ref(null);
     const activeChip = ref('today');
     const proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=';
     const baseUrl = 'https://dailyurducolumns.com';
@@ -265,6 +269,17 @@ createApp({
     const isArticleSaved = computed(() => {
       if (!activeArticle.value) return false;
       return savedArticles.value.some(a => a.url === activeArticle.value.url);
+    });
+
+    const filteredHomeArticles = computed(() => {
+      const source = activeChip.value === 'today' ? todayArticles.value : activeChip.value === 'date' ? dateArticles.value : authorArticles.value;
+      if (!searchQuery.value.trim()) return source;
+      return source.filter(a => matchesSearch(a, searchQuery.value));
+    });
+
+    const filteredSavedArticles = computed(() => {
+      if (!searchQuery.value.trim()) return savedArticles.value;
+      return savedArticles.value.filter(a => matchesSearch(a, searchQuery.value));
     });
 
     function openTextOptions() {
@@ -692,33 +707,63 @@ createApp({
       }
     }
 
-        function closeArticle() {
+    function closeArticle() {
       activeArticle.value = null;
       articleContent.value = { title: '', paragraphs: [] };
       articleError.value = null;
       autoScrollActive.value = false;
     }
 
+    async function shareArticle() {
+      if (!articleContent.value.title && articleContent.value.paragraphs.length === 0) return;
+
+      const title = articleContent.value.title || '';
+      const body = articleContent.value.paragraphs.join('\n\n');
+
+      const shareText = title ? `*${title}*\n\n${body}` : body;
+
+      try {
+        // Native Capacitor share (Android/iOS)
+        if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+          await window.Capacitor.Plugins.Share.share({
+            text: shareText,
+            dialogTitle: 'Share Article',
+          });
+        }
+        // Web fallback (for browser testing)
+        else if (navigator.share) {
+          await navigator.share({ text: shareText });
+        } else {
+          // Last resort: copy to clipboard
+          await navigator.clipboard.writeText(shareText);
+          showToast('Article copied to clipboard');
+        }
+      } catch (e) {
+        // User cancelled or share failed silently
+        if (e.name !== 'AbortError') {
+          console.error('Share failed:', e);
+        }
+      }
+    }
+
     function handleBackButton() {
-      // 1. Close any open modal first
+      // 1. Close search if open
+      if (searchActive.value) { deactivateSearch(); return; }
+      // 2. Close any open modal
       if (textOptionsOpen.value) { closeTextOptions(); return; }
       if (authorSheetOpen.value) { closeAuthorSheet(); return; }
-
-      // 2. If in article view, go back to the tab it came from
+      // 3. If in article view, go back to the tab it came from
       if (activeArticle.value) { closeArticle(); return; }
-
-      // 3. If on any main tab other than Home, go to Home
+      // 4. If on any main tab other than Home, go to Home
       if (activeTab.value !== 'home') { activeTab.value = 'home'; return; }
-
-      // 4. On Home tab — show exit warning toast
+      // 5. On Home tab — show exit warning toast
       if (!exitWarningActive.value) {
         exitWarningActive.value = true;
         showToast('Press back again to exit');
         setTimeout(() => { exitWarningActive.value = false; }, 2000);
         return;
       }
-
-      // 5. Exit the app
+      // 6. Exit the app
       if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
         window.Capacitor.Plugins.App.exitApp();
       }    
@@ -835,14 +880,63 @@ createApp({
       if (v === 'today' && todayArticles.value.length === 0) loadTodayArticles();
     });
 
+    watch(activeTab, () => {
+      deactivateSearch();
+    });
+
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         reacquireWakeLockIfNeeded();
       }
     });
 
+        function activateSearch() {
+      searchActive.value = true;
+      Vue.nextTick(() => {
+        if (searchInputRef.value) searchInputRef.value.focus();
+      });
+    }
+
+    function deactivateSearch() {
+      searchActive.value = false;
+      searchQuery.value = '';
+    }
+
+    function clearSearch() {
+      searchQuery.value = '';
+      Vue.nextTick(() => {
+        if (searchInputRef.value) searchInputRef.value.focus();
+      });
+    }
+
+    function onSearchEnter() {
+      let single = null;
+      if (activeTab.value === 'home') {
+        single = filteredHomeArticles.value;
+      } else if (activeTab.value === 'saved') {
+        single = filteredSavedArticles.value;
+      }
+      if (single && single.length === 1) {
+        const article = single[0];
+        if (activeTab.value === 'saved') {
+          openSavedArticle(article);
+        } else {
+          openArticle(article);
+        }
+        deactivateSearch();
+      }
+    }
+
+    function matchesSearch(article, query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      const text = ((article.title || '') + ' ' + (article.author || '')).toLowerCase();
+      return text.includes(q);
+    }
+
     onMounted(async () => {
       await db.init();
+      appReady.value = true;
       loadTodayArticles();
       refreshCachedUrls();
       refreshReadUrls();
@@ -856,8 +950,12 @@ createApp({
         window.Capacitor.Plugins.App.addListener('backButton', handleBackButton);
       }    
     });
+
     return {
-      activeTab, activeChip, homeBarTitle, tabs, icons, articleBodyRef,
+      appReady, activeTab, activeChip, homeBarTitle, tabs, icons, articleBodyRef,
+      searchActive, searchQuery, searchInputRef,theme, setTheme,
+      activateSearch, deactivateSearch, clearSearch, onSearchEnter,
+      filteredHomeArticles, filteredSavedArticles,
       toastMessage, toastVisible, activeArticle, openArticle, closeArticle,
       todayArticles, dateArticles, loading, error,
       dateInputRef, selectedDate, maxDate, selectedDateLabel,
@@ -867,15 +965,15 @@ createApp({
       adjustFontSize, adjustLineHeight, setTextAlign,
       openTextOptions, closeTextOptions, fontSizeStep, lineHeightStep, scrollSpeedStep,
       autoScrollActive, toggleAutoScroll, scrollSpeed, adjustScrollSpeed,
-      theme, setTheme,
       downloadAllHomeState, toggleDownloadAllHome, downloadAllSavedState, toggleDownloadAllSaved,
       cachedUrls, refreshCachedUrls, readUrls, refreshReadUrls,
       savedArticles, refreshSavedArticles, isArticleSaved, toggleSaveArticle, openSavedArticle,
-      authorSheetOpen, authorSearch, allAuthors,
+      authorSheetOpen, authorSearch, allAuthors, shareArticle,
       followedAuthors, followedAuthorsList, filteredAuthors,
       openAuthorSheet, closeAuthorSheet, toggleFollowAuthor, scrapeAuthor, onAuthorSearchEnter,
       hasMoreAuthors, authorSentinelRef, skeletonLines, skeletonCards,
       authorArticles, activeAuthorLabel, authorHasMore, loadingMore, loadMoreAuthorArticles,
     };
   }
+
 }).mount('#app');
