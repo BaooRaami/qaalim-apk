@@ -1,6 +1,6 @@
 {
   "name": "qaalim",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Qaalim Article Reader",
   "scripts": {
     "build": "npx cap sync android"

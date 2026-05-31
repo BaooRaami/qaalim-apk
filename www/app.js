@@ -719,30 +719,15 @@ createApp({
 
       const title = articleContent.value.title || '';
       const body = articleContent.value.paragraphs.join('\n\n');
-
       const shareText = title ? `*${title}*\n\n${body}` : body;
 
-      try {
-        // Native Capacitor share (Android/iOS)
-        if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-          await window.Capacitor.Plugins.Share.share({
-            text: shareText,
-            dialogTitle: 'Share Article',
-          });
-        }
-        // Web fallback (for browser testing)
-        else if (navigator.share) {
-          await navigator.share({ text: shareText });
-        } else {
-          // Last resort: copy to clipboard
-          await navigator.clipboard.writeText(shareText);
-          showToast('Article copied to clipboard');
-        }
-      } catch (e) {
-        // User cancelled or share failed silently
-        if (e.name !== 'AbortError') {
-          console.error('Share failed:', e);
-        }
+      if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+        await window.Capacitor.Plugins.Share.share({ text: shareText });
+      } else if (navigator.share) {
+        await navigator.share({ text: shareText });
+      } else {
+        await navigator.clipboard.writeText(shareText);
+        showToast('Article copied to clipboard');
       }
     }
 

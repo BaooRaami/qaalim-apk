@@ -19,7 +19,7 @@
       <header class="top-bar">
         <div class="top-bar-inner" v-if="!searchActive">
           <span class="app-wordmark">Qaalim</span>
-          <button class="icon-btn" @click="activateSearch()" v-html="icons.search" aria-label="Search"></button>
+          <button class="icon-btn" @click="activateSearch()" v-html="icons.search" aria-label="Search" v-if="activeTab !== 'settings'"></button>
         </div>
         <div class="top-bar-inner search-bar" v-else>
           <button class="icon-btn" @click="deactivateSearch()" v-html="icons.back" aria-label="Back"></button>
