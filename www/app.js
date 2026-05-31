@@ -22,6 +22,7 @@ createApp({
     const error = ref(null);
 
     const selectedDateLabel = ref('');
+    const currentDateKey = ref('');
 
     // ── Article View State ───────────────────────────────────────────
     const articleContent = ref({ title: '', paragraphs: [] });
@@ -52,6 +53,7 @@ createApp({
 
     // ── Author Sheet State ───────────────────────────────────────────
     const authorSheetOpen = ref(false);
+    const exitWarningActive = ref(false);    
     const authorSearch = ref('');
     const allAuthors = ref([]);
     const followedAuthors = ref(new Set());
@@ -102,12 +104,20 @@ createApp({
           allAuthors.value = [];
         }
       }
+      await Vue.nextTick();
+      const input = document.querySelector('.author-search-input');
+      if (input) input.focus();
     }
 
     function closeAuthorSheet() {
       teardownAuthorObserver();
       authorSheetOpen.value = false;
       authorSearch.value = '';
+    }
+
+    function onAuthorSearchEnter() {
+      const visible = filteredAuthors.value;
+      if (visible.length === 1) scrapeAuthor(visible[0]);
     }
 
     async function toggleFollowAuthor(name) {
@@ -312,12 +322,10 @@ createApp({
       }
     }
 
-    const homeTabs = computed(() => {
-      return [
-        { id: 'today', label: 'Today', icon: 'today' },
-        { id: 'author', label: activeAuthorLabel.value || 'Pick an Author', icon: 'author' },
-        { id: 'date', label: selectedDateLabel.value || 'Pick a Date', icon: 'date' },
-      ];
+    const homeBarTitle = computed(() => {
+      if (activeChip.value === 'date' && selectedDateLabel.value) return 'Articles from ' + selectedDateLabel.value;
+      if (activeChip.value === 'author' && activeAuthorLabel.value) return 'Articles by ' + activeAuthorLabel.value;
+      return 'Latest Articles';
     });
 
     const tabs = [
@@ -524,6 +532,10 @@ createApp({
     }
 
     async function scrapeAuthor(name) {
+      if (activeChip.value === 'author' && activeAuthorLabel.value === name) {
+        closeAuthorSheet();
+        return;
+      }
       const slug = authorToSlug(name);
       activeAuthorLabel.value = name;
       activeAuthorSlug.value = slug;
@@ -572,9 +584,15 @@ createApp({
 
     function openDateSheet() {
       maxDate.value = getTodayKey();
-      if (!selectedDate.value) selectedDate.value = maxDate.value;
+      const previous = selectedDate.value;
+      selectedDate.value = '';
       const input = dateInputRef.value;
       if (input) {
+        const onCancel = () => {
+          selectedDate.value = previous;
+          input.removeEventListener('blur', onCancel);
+        };
+        input.addEventListener('blur', onCancel);
         input.showPicker ? input.showPicker() : input.click();
       }
     }
@@ -593,7 +611,20 @@ createApp({
 
     function onDateChange() {
       if (!selectedDate.value) return;
+      const todayKey = getTodayKey();
+      if (selectedDate.value === todayKey) {
+        activeChip.value = 'today';
+        selectedDateLabel.value = '';
+        error.value = null;
+        if (todayArticles.value.length === 0) loadTodayArticles();
+        return;
+      }
+      if (activeChip.value === 'date' && selectedDate.value === currentDateKey.value) {
+        return;
+      }
       selectedDateLabel.value = formatDisplayDate(selectedDate.value);
+      activeChip.value = 'date';
+      currentDateKey.value = selectedDate.value;
       const [y, m, d] = selectedDate.value.split('-');
       const path = `/columns/${y}${m}${d}`;
       scrape(path);
@@ -661,11 +692,36 @@ createApp({
       }
     }
 
-    function closeArticle() {
+        function closeArticle() {
       activeArticle.value = null;
       articleContent.value = { title: '', paragraphs: [] };
       articleError.value = null;
       autoScrollActive.value = false;
+    }
+
+    function handleBackButton() {
+      // 1. Close any open modal first
+      if (textOptionsOpen.value) { closeTextOptions(); return; }
+      if (authorSheetOpen.value) { closeAuthorSheet(); return; }
+
+      // 2. If in article view, go back to the tab it came from
+      if (activeArticle.value) { closeArticle(); return; }
+
+      // 3. If on any main tab other than Home, go to Home
+      if (activeTab.value !== 'home') { activeTab.value = 'home'; return; }
+
+      // 4. On Home tab — show exit warning toast
+      if (!exitWarningActive.value) {
+        exitWarningActive.value = true;
+        showToast('Press back again to exit');
+        setTimeout(() => { exitWarningActive.value = false; }, 2000);
+        return;
+      }
+
+      // 5. Exit the app
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        window.Capacitor.Plugins.App.exitApp();
+      }    
     }
 
     let scrollInterval = null;
@@ -765,17 +821,11 @@ createApp({
     function onChipClick(chipId) {
       error.value = null;
       if (chipId === 'date') {
-        activeChip.value = 'date';
         openDateSheet();
         return;
       }
       if (chipId === 'author') {
-        activeChip.value = 'author';
         openAuthorSheet();
-        return;
-      }
-      if (chipId === 'date' && activeChip.value === 'date') {
-        openDateSheet();
         return;
       }
       activeChip.value = chipId;
@@ -800,10 +850,14 @@ createApp({
       refreshSavedArticles();
       maxDate.value = getTodayKey();
       loadTextSettings();
-    });
 
+      // Android hardware back button (Capacitor)
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        window.Capacitor.Plugins.App.addListener('backButton', handleBackButton);
+      }    
+    });
     return {
-      activeTab, activeChip, homeTabs, tabs, icons, articleBodyRef,
+      activeTab, activeChip, homeBarTitle, tabs, icons, articleBodyRef,
       toastMessage, toastVisible, activeArticle, openArticle, closeArticle,
       todayArticles, dateArticles, loading, error,
       dateInputRef, selectedDate, maxDate, selectedDateLabel,
@@ -819,7 +873,7 @@ createApp({
       savedArticles, refreshSavedArticles, isArticleSaved, toggleSaveArticle, openSavedArticle,
       authorSheetOpen, authorSearch, allAuthors,
       followedAuthors, followedAuthorsList, filteredAuthors,
-      openAuthorSheet, closeAuthorSheet, toggleFollowAuthor, scrapeAuthor,
+      openAuthorSheet, closeAuthorSheet, toggleFollowAuthor, scrapeAuthor, onAuthorSearchEnter,
       hasMoreAuthors, authorSentinelRef, skeletonLines, skeletonCards,
       authorArticles, activeAuthorLabel, authorHasMore, loadingMore, loadMoreAuthorArticles,
     };

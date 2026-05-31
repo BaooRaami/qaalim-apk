@@ -19,15 +19,11 @@
           <button class="icon-btn" v-html="icons.search" aria-label="Search"></button>
         </div>
       </header>
-      <div v-show="activeTab === 'home'" class="home-tabs-bar">
-        <div class="home-tabs">
-          <template v-for="(chip, index) in homeTabs" :key="chip.id">
-            <button class="home-tab" :class="{ active: activeChip === chip.id }" @click="onChipClick(chip.id)">
-              <span class="home-tab-icon" v-html="icons[chip.icon]"></span>
-              <span class="home-tab-label">{{ chip.label }}</span>
-            </button>
-            <div v-if="index < homeTabs.length - 1" class="home-tab-divider"></div>
-          </template>
+      <div v-show="activeTab === 'home'" class="filter-bar">
+        <span class="filter-bar-title">{{ homeBarTitle }}</span>
+        <div class="filter-bar-actions">
+          <button class="filter-btn" :class="{ active: activeChip === 'date' }" @click="onChipClick('date')" aria-label="Pick a date"><span v-html="icons.date"></span><span class="filter-btn-label">Date</span></button>
+          <button class="filter-btn" :class="{ active: activeChip === 'author' }" @click="onChipClick('author')" aria-label="Pick an author"><span v-html="icons.author"></span><span class="filter-btn-label">Authors</span></button>
         </div>
       </div>
       <main class="page-content">
@@ -259,6 +255,7 @@
               type="text"
               placeholder="Search authors..."
               v-model="authorSearch"
+              @keydown.enter="onAuthorSearchEnter()"
             />
           </div>
           <div class="author-sheet-scroll">
