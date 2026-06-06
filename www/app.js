@@ -9,9 +9,12 @@ createApp({
     const searchQuery = ref('');
     const searchInputRef = ref(null);
     const activeChip = ref('today');
-    const proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=';
+    const proxyUrls = [
+      'https://api.codetabs.com/v1/proxy?quest=',
+      'https://corsproxy.io/?url='
+    ];
     const baseUrl = 'https://dailyurducolumns.com';
-
+    const currentProxyIndex = ref(0);
     const todayArticles = ref([]);
     const cachedUrls = ref(new Set());
     const readUrls = ref(new Set());
@@ -156,7 +159,8 @@ createApp({
         if (downloadAllSavedState.value || articleContent.value.title) {
           try {
             const proxyUrl = buildProxyUrl(a.url);
-            const html = await fetch(proxyUrl).then(r => r.text());
+            const res = await fetch(proxyUrl);
+            const html = await res.text();
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const parsed = parseUrduContent(doc);
             if (parsed) {
@@ -188,7 +192,8 @@ createApp({
         }
 
         const proxyUrl = buildProxyUrl(article.url);
-        const html = await fetch(proxyUrl).then(r => r.text());
+        const res = await fetch(proxyUrl);
+        const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const parsed = parseUrduContent(doc);
         if (!parsed) {
@@ -219,7 +224,8 @@ createApp({
         if (toastTimer) clearTimeout(toastTimer);
         try {
           const proxyUrl = buildProxyUrl(a.url);
-          const html = await fetch(proxyUrl).then(r => r.text());
+          const res = await fetch(proxyUrl);
+          const html = await res.text();
           const doc = new DOMParser().parseFromString(html, 'text/html');
           const parsed = parseUrduContent(doc);
           if (!parsed) continue;
@@ -333,7 +339,7 @@ createApp({
         downloadAllSavedState.value = saved.downloadAllSaved ?? false;
       
         theme.value = saved.theme ?? 'midnight';
-        document.documentElement.classList.add('theme-' + theme.value);
+        document.documentElement.className = 'theme-' + theme.value;
       }
     }
 
@@ -398,7 +404,8 @@ createApp({
 
     // ── Today Articles: Offline-First Logic ──────────────────────────
     async function fetchLatestArticles() {
-      const html = await fetch(proxyUrl + baseUrl + '/LstColumns.aspx').then(r => r.text());
+      const res = await fetchWithProxySwitch(baseUrl + '/LstColumns.aspx');
+      const html = await res.text();
       const doc = new DOMParser().parseFromString(html, 'text/html');
       return parseArticles(doc);
     }
@@ -505,7 +512,8 @@ createApp({
         if (toastTimer) clearTimeout(toastTimer);
         try {
           const proxyUrl = buildProxyUrl(a.url);
-          const html = await fetch(proxyUrl).then(r => r.text());
+          const res = await fetch(proxyUrl);
+          const html = await res.text();
           const doc = new DOMParser().parseFromString(html, 'text/html');
 
           const parsed = parseUrduContent(doc);
@@ -524,7 +532,8 @@ createApp({
       error.value = null;
       dateArticles.value = [];
       try {
-        const html = await fetch(proxyUrl + baseUrl + path).then(r => r.text());
+        const res = await fetchWithProxySwitch(baseUrl + path);
+        const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
         dateArticles.value = parseArticles(doc);
       } catch (e) {
@@ -541,7 +550,8 @@ createApp({
 
     // ── Author-based scrape ──────────────────────────────
     async function fetchAuthorPage(slug, page) {
-      const html = await fetch(proxyUrl + baseUrl + '/' + slug + '/' + page).then(r => r.text());
+      const res = await fetchWithProxySwitch(baseUrl + '/' + slug + '/' + page);
+      const html = await res.text();
       const doc = new DOMParser().parseFromString(html, 'text/html');
       return parseArticles(doc);
     }
@@ -647,7 +657,26 @@ createApp({
 
     function buildProxyUrl(articleUrl) {
       const path = articleUrl.replace(baseUrl + baseUrl, baseUrl).replace(baseUrl, '');
-      return proxyUrl + baseUrl + path;
+      return proxyUrls[currentProxyIndex.value] + baseUrl + path;
+    }
+
+    async function fetchWithProxySwitch(url) {
+      let lastError = null;
+      for (let i = 0; i < proxyUrls.length; i++) {
+        const proxy = proxyUrls[i];
+        try {
+          const res = await fetch(proxy + url);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          if (i !== currentProxyIndex.value) {
+            currentProxyIndex.value = i;
+            showToast('Switched to alternate method');
+          }
+          return res;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      throw lastError || new Error('All proxies failed');
     }
 
     function parseUrduContent(doc) {
@@ -685,7 +714,8 @@ createApp({
 
         // Step 2: No cache — fetch from network
         const proxyUrl = buildProxyUrl(article.url);
-        const html = await fetch(proxyUrl).then(r => r.text());
+        const res = await fetch(proxyUrl);
+        const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
 
         const parsed = parseUrduContent(doc);

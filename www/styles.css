@@ -71,6 +71,7 @@
   --accent-glow: rgba(125, 211, 252, 0.12);
 }
 
+[v-cloak] { display: none !important; }
 html, body { height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: var(--font-body); font-size: 16px; -webkit-font-smoothing: antialiased; overscroll-behavior: none; }
 button { cursor: pointer; border: none; background: none; font-family: inherit; }
 a { text-decoration: none; color: inherit; }
@@ -147,7 +148,7 @@ a { text-decoration: none; color: inherit; }
 .article-card.unread::before { content: ''; position: absolute; top: 0; left: 0; width: 0; height: 0; border-style: solid; border-width: 18px 18px 0 0; border-color: var(--accent) transparent transparent transparent; }
 .article-title { font-size: 15px; font-weight: 600; color: var(--text-primary); line-height: 1.35; margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .article-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.article-author { font-size: 12px; font-weight: 500; color: var(--text-accent); max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.article-author { font-size: 12px; font-weight: 500; color: var(--text-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 20ch; }
 .article-sep { width: 3px; height: 3px; border-radius: var(--radius-pill); background: var(--text-muted); flex-shrink: 0; }
 .article-date { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="theme-midnight">
 
 <head>
   <meta charset="UTF-8" />
@@ -10,7 +10,7 @@
 </head>
 
 <body>
-  <div id="app">
+  <div id="app" v-cloak>
     <div class="app-shell" :class="{ 'app-loading': !appReady }">
       <div class="app-loader" v-if="!appReady">
         <div class="app-loader-ring"></div>
