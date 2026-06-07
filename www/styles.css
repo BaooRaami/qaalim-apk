@@ -193,7 +193,7 @@ a { text-decoration: none; color: inherit; }
 .theme-picker-inline { display: flex; align-items: center; gap: 5px; }
 
 /* ─── Urdu Font ─────────────────────────────────────────────────── */
-@font-face { font-family: 'Amar'; src: url('0libs/Amar.woff2') format('woff2'); font-weight: normal; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Amar'; src: url('0libs/Amar.woff2') format('woff2'); font-weight: normal; font-style: normal; font-display: block; }
 
 /* ─── Article View Content ──────────────────────────────────────── */
 .article-view-title { font-family: 'Amar', var(--font-display); font-size: 24px; font-weight: 600; color: var(--text-primary); line-height: 1.4; margin-bottom: 20px; text-align: right; }
@@ -233,7 +233,22 @@ a { text-decoration: none; color: inherit; }
 
 /* ─── Bottom Sheet Base ─────────────────────────────────────────── */
 .sheet-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.55); display: flex; align-items: flex-end; animation: fadeIn 0.2s var(--ease); }
+.sheet-overlay--top { align-items: flex-start; }
 .bottom-sheet { width: 100%; background: var(--bg-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; border: 1px solid var(--border); border-bottom: none; padding: 12px 20px 32px; animation: slideUp 0.28s var(--ease); }
+.top-sheet { width: 100%; background: var(--bg-surface); border-radius: 0 0 var(--radius-lg) var(--radius-lg); border: 1px solid var(--border); border-top: none; padding: 12px 20px 32px; animation: slideDown 0.28s var(--ease); margin-top: var(--top-bar-height); }
+.sheet-section { margin-bottom: 16px; }
+.sheet-section:last-child { margin-bottom: 0; }
+.sheet-section-label { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+.sheet-section-body { display: flex; flex-direction: column; gap: 6px; }
+.sheet-divider { height: 1px; background: var(--border-subtle); margin: 8px 0 16px; }
+.filter-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.filter-row:first-child { padding-top: 0; }
+.filter-row:last-child { padding-bottom: 0; }
+.filter-row-label { font-size: 14px; font-weight: 500; color: var(--text-primary); flex-shrink: 0; min-width: 100px; }
+.filter-row-options { display: flex; gap: 8px; flex: 1; }
+.filter-option-btn { flex: 1; font-size: 13px; font-weight: 500; padding: 8px 0; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-secondary); transition: background 0.2s, color 0.2s, border-color 0.2s; cursor: pointer; text-align: center; min-height: 36px; }
+.filter-option-btn:hover { border-color: var(--accent-dim); color: var(--text-primary); }
+.filter-option-btn.active { background: var(--accent-glow); border-color: var(--accent-dim); color: var(--accent); }
 .sheet-handle { width: 36px; height: 4px; border-radius: var(--radius-pill); background: var(--border); margin: 0 auto 16px; }
 .sheet-title { font-family: var(--font-display); font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 20px; }
 
@@ -261,10 +276,12 @@ a { text-decoration: none; color: inherit; }
 .app-loader-text { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.02em; }
 .app-loader-text::after { content: '.'; color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
 .app-loading .page-content { opacity: 0; pointer-events: none; }
 
 /* ─── Search Bar ───────────────────────────────────────────────── */
 .search-bar { padding: 0 12px; gap: 8px; }
+.top-bar-actions { display: flex; align-items: center; gap: 4px; }
 .search-input-wrap { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
 .search-input { width: 100%; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 8px 38px 8px 16px; font-size: 15px; color: var(--text-primary); font-family: var(--font-body); outline: none; transition: border-color 0.2s; }
 .search-input::placeholder { color: var(--text-muted); }

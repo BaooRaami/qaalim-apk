@@ -1,6 +1,13 @@
 const { createApp, ref, computed, onMounted, watch } = Vue;
 
+const ThemePicker = {
+  props: ['modelValue'],
+  emits: ['update:modelValue'],
+  template: '#theme-picker'
+};
+
 createApp({
+  components: { ThemePicker },
   setup() {
     const appReady = ref(false);
     const activeTab = ref('home');
@@ -15,11 +22,15 @@ createApp({
     ];
     const baseUrl = 'https://dailyurducolumns.com';
     const currentProxyIndex = ref(0);
+
     const todayArticles = ref([]);
     const cachedUrls = ref(new Set());
     const readUrls = ref(new Set());
     const dateArticles = ref([]);
     const authorArticles = ref([]);
+    const feedArticles = ref([]);
+    const feedLoading = ref(false);
+    const feedError = ref(null);
     const activeAuthorLabel = ref('');
     const authorArticlePage = ref(1);
     const authorHasMore = ref(false);
@@ -40,6 +51,7 @@ createApp({
     const articleBodyRef = ref(null);
     const downloadAllHomeState = ref(false);
     const downloadAllSavedState = ref(false);
+    const downloadAllFeedState = ref(false);
     const savedArticles = ref([]);
     const fontSize = ref(20);
     const lineHeight = ref(2);
@@ -59,6 +71,9 @@ createApp({
     const theme = ref('midnight');
 
     // ── Author Sheet State ───────────────────────────────────────────
+    const filterSheetOpen = ref(false);
+    const filterVisibility = ref('all');
+    const sortBy = ref('date-desc');
     const authorSheetOpen = ref(false);
     const exitWarningActive = ref(false);    
     const authorSearch = ref('');
@@ -68,6 +83,41 @@ createApp({
     const authorPage = ref(1);
     const authorSentinelRef = ref(null);
     let authorObserver = null;
+
+    // ── Proxy Race System ────────────────────────────────────────────
+    async function fetchWithRace(targetUrl, options = {}) {
+      const controllers = proxyUrls.map(() => new AbortController());
+      const requests = proxyUrls.map((proxy, i) => {
+        const fullUrl = proxy + targetUrl;
+        const start = performance.now();
+        return fetch(fullUrl, { ...options, signal: controllers[i].signal })
+          .then(res => {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const ms = (performance.now() - start).toFixed(0);
+            return { res, index: i, ms };
+          });
+      });
+
+      try {
+        const winner = await Promise.race(requests);
+        // Abort the losers
+        controllers.forEach((ctrl, i) => {
+          if (i !== winner.index) {
+            try { ctrl.abort(); } catch (e) {}
+          }
+        });
+        // Remember the winner for next time
+        if (winner.index !== currentProxyIndex.value) {
+          currentProxyIndex.value = winner.index;
+          showToast('Switched to alternate method');
+        }
+        return winner.res;
+      } catch (err) {
+        // All failed — abort any still running
+        controllers.forEach(ctrl => { try { ctrl.abort(); } catch (e) {} });
+        throw err;
+      }
+    }
 
     function adjustFontSize(delta) {
       const next = fontSize.value + delta;
@@ -131,9 +181,17 @@ createApp({
       if (followedAuthors.value.has(name)) {
         followedAuthors.value.delete(name);
         await db.unfollowAuthor(name);
+        await db.deleteOpenedArticlesByAuthor(name);
+        await refreshCachedUrls();
+        feedArticles.value = feedArticles.value.filter(a => a.author !== name);
+        await db.saveFeedCache(feedArticles.value);
+        if (feedArticles.value.length === 0) {
+          await db.clearFeedCache();
+        }
       } else {
         followedAuthors.value.add(name);
         await db.followAuthor(name);
+        loadFeed(true);
       }
       followedAuthors.value = new Set(followedAuthors.value);
     }
@@ -158,8 +216,7 @@ createApp({
         const article = { url: a.url, title: a.title, author: a.author, date: a.date, savedAt: Date.now() };
         if (downloadAllSavedState.value || articleContent.value.title) {
           try {
-            const proxyUrl = buildProxyUrl(a.url);
-            const res = await fetch(proxyUrl);
+        const res = await fetchWithRace(a.url);
             const html = await res.text();
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const parsed = parseUrduContent(doc);
@@ -191,8 +248,7 @@ createApp({
           return;
         }
 
-        const proxyUrl = buildProxyUrl(article.url);
-        const res = await fetch(proxyUrl);
+        const res = await fetchWithRace(article.url);
         const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const parsed = parseUrduContent(doc);
@@ -223,8 +279,7 @@ createApp({
         toastVisible.value = true;
         if (toastTimer) clearTimeout(toastTimer);
         try {
-          const proxyUrl = buildProxyUrl(a.url);
-          const res = await fetch(proxyUrl);
+          const res = await fetchWithRace(a.url);
           const html = await res.text();
           const doc = new DOMParser().parseFromString(html, 'text/html');
           const parsed = parseUrduContent(doc);
@@ -277,15 +332,62 @@ createApp({
       return savedArticles.value.some(a => a.url === activeArticle.value.url);
     });
 
+    function matchesVisibility(article) {
+      if (filterVisibility.value === 'all') return true;
+      const isRead = readUrls.value.has(article.url);
+      return filterVisibility.value === 'read' ? isRead : !isRead;
+    }
+
+    function sortArticles(list) {
+      const sorted = [...list];
+      switch (sortBy.value) {
+        case 'author-asc': return sorted.sort((a, b) => (a.author || '').localeCompare(b.author || ''));
+        case 'author-desc': return sorted.sort((a, b) => (b.author || '').localeCompare(a.author || ''));
+        case 'title-asc': return sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+        case 'title-desc': return sorted.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+        case 'date-asc': return sorted.sort((a, b) => {
+          const da = parseArticleDate(a.date);
+          const db = parseArticleDate(b.date);
+          if (!da && !db) return 0;
+          if (!da) return 1;
+          if (!db) return -1;
+          return da.localeCompare(db);
+        });
+        case 'date-desc': return sorted.sort((a, b) => {
+          const da = parseArticleDate(a.date);
+          const db = parseArticleDate(b.date);
+          if (!da && !db) return 0;
+          if (!da) return 1;
+          if (!db) return -1;
+          return db.localeCompare(da);
+        });
+        default: return sorted;
+      }
+    }
+
     const filteredHomeArticles = computed(() => {
       const source = activeChip.value === 'today' ? todayArticles.value : activeChip.value === 'date' ? dateArticles.value : authorArticles.value;
-      if (!searchQuery.value.trim()) return source;
-      return source.filter(a => matchesSearch(a, searchQuery.value));
+      let result = source;
+      if (searchQuery.value.trim()) result = result.filter(a => matchesSearch(a, searchQuery.value));
+      result = result.filter(a => matchesVisibility(a));
+      result = sortArticles(result);
+      return result;
     });
 
     const filteredSavedArticles = computed(() => {
-      if (!searchQuery.value.trim()) return savedArticles.value;
-      return savedArticles.value.filter(a => matchesSearch(a, searchQuery.value));
+      let result = savedArticles.value;
+      if (searchQuery.value.trim()) result = result.filter(a => matchesSearch(a, searchQuery.value));
+      result = result.filter(a => matchesVisibility(a));
+      result = sortArticles(result);
+      return result;
+    });
+
+    const filteredFeedArticles = computed(() => {
+      let result = feedArticles.value;
+      if (searchQuery.value.trim()) result = result.filter(a => matchesSearch(a, searchQuery.value));
+      result = result.filter(a => matchesVisibility(a));
+      result = sortArticles(result);
+      return result;
     });
 
     function openTextOptions() {
@@ -295,7 +397,6 @@ createApp({
     function closeTextOptions() {
       textOptionsOpen.value = false;
       saveSettings();
-
     }
 
     async function refreshCachedUrls() {
@@ -324,8 +425,45 @@ createApp({
       }
     }
 
+    async function toggleDownloadAllFeed() {
+      downloadAllFeedState.value = !downloadAllFeedState.value;
+      saveSettings();
+      if (downloadAllFeedState.value && feedArticles.value.length > 0) {
+        await downloadAllFeedArticles();
+      }
+    }
+
+    async function downloadAllFeedArticles() {
+      const toDownload = [];
+      for (const a of feedArticles.value) {
+        const existing = await db.getOpenedArticle(a.url);
+        if (!existing) toDownload.push(a);
+      }
+      if (toDownload.length === 0) { showToast('All feed articles already downloaded ✓'); return; }
+
+      const total = toDownload.length;
+      let done = 0;
+
+      for (const a of toDownload) {
+        toastMessage.value = `Downloading feed ${done + 1} of ${total}…`;
+        toastVisible.value = true;
+        if (toastTimer) clearTimeout(toastTimer);
+        try {
+          const res = await fetchWithRace(a.url);
+          const html = await res.text();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const parsed = parseUrduContent(doc);
+          if (!parsed) { done++; continue; }
+          await db.saveOpenedArticle(a.url, parsed.title || a.title, parsed.paragraphs, a.author);
+          await refreshCachedUrls();
+        } catch (e) { /* skip failed article silently */ }
+        done++;
+      }
+      showToast(`Downloaded ${done} of ${total} feed articles ✓`);
+    }
+
     function saveSettings() {
-      db.saveTextSettings({ fontSize: fontSize.value, lineHeight: lineHeight.value, textAlign: textAlign.value, scrollSpeed: scrollSpeed.value, downloadAllHome: downloadAllHomeState.value, downloadAllSaved: downloadAllSavedState.value , theme: theme.value });
+      db.saveTextSettings({ fontSize: fontSize.value, lineHeight: lineHeight.value, textAlign: textAlign.value, scrollSpeed: scrollSpeed.value, downloadAllHome: downloadAllHomeState.value, downloadAllSaved: downloadAllSavedState.value, downloadAllFeed: downloadAllFeedState.value, theme: theme.value });
     }
 
     async function loadTextSettings() {
@@ -337,6 +475,7 @@ createApp({
         scrollSpeed.value = saved.scrollSpeed ?? 3;
         downloadAllHomeState.value = saved.downloadAllHome ?? false;
         downloadAllSavedState.value = saved.downloadAllSaved ?? false;
+        downloadAllFeedState.value = saved.downloadAllFeed ?? false;
       
         theme.value = saved.theme ?? 'midnight';
         document.documentElement.className = 'theme-' + theme.value;
@@ -404,7 +543,7 @@ createApp({
 
     // ── Today Articles: Offline-First Logic ──────────────────────────
     async function fetchLatestArticles() {
-      const res = await fetchWithProxySwitch(baseUrl + '/LstColumns.aspx');
+      const res = await fetchWithRace(baseUrl + '/LstColumns.aspx');
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, 'text/html');
       return parseArticles(doc);
@@ -511,14 +650,13 @@ createApp({
         toastVisible.value = true;
         if (toastTimer) clearTimeout(toastTimer);
         try {
-          const proxyUrl = buildProxyUrl(a.url);
-          const res = await fetch(proxyUrl);
+          const res = await fetchWithRace(a.url);
           const html = await res.text();
           const doc = new DOMParser().parseFromString(html, 'text/html');
 
           const parsed = parseUrduContent(doc);
           if (!parsed) { done++; continue; }
-          await db.saveOpenedArticle(a.url, parsed.title || a.title, parsed.paragraphs);
+          await db.saveOpenedArticle(a.url, parsed.title || a.title, parsed.paragraphs, a.author);
           await refreshCachedUrls();
         } catch (e) { /* skip failed article silently */ }
         done++;
@@ -532,7 +670,7 @@ createApp({
       error.value = null;
       dateArticles.value = [];
       try {
-        const res = await fetchWithProxySwitch(baseUrl + path);
+        const res = await fetchWithRace(baseUrl + path);
         const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
         dateArticles.value = parseArticles(doc);
@@ -550,7 +688,7 @@ createApp({
 
     // ── Author-based scrape ──────────────────────────────
     async function fetchAuthorPage(slug, page) {
-      const res = await fetchWithProxySwitch(baseUrl + '/' + slug + '/' + page);
+      const res = await fetchWithRace(baseUrl + '/' + slug + '/' + page);
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, 'text/html');
       return parseArticles(doc);
@@ -599,6 +737,63 @@ createApp({
         showToast('Could not load more articles.');
       } finally {
         loadingMore.value = false;
+      }
+    }
+
+    async function loadFeed(force = false) {
+      feedLoading.value = true;
+      feedError.value = null;
+
+      if (!force) {
+        const cached = await db.getFeedCache();
+        if (cached && cached.articles && cached.articles.length > 0) {
+          feedArticles.value = cached.articles;
+          feedLoading.value = false;
+          return;
+        }
+      }
+
+      feedArticles.value = [];
+      const authors = [...followedAuthors.value];
+      if (authors.length === 0) {
+        feedLoading.value = false;
+        await db.clearFeedCache();
+        return;
+      }
+
+      try {
+        const results = await Promise.allSettled(
+          authors.map(name => fetchAuthorPage(authorToSlug(name), 1))
+        );
+
+        let allArticles = [];
+        results.forEach(result => {
+          if (result.status === 'fulfilled') {
+            allArticles = allArticles.concat(result.value);
+          }
+        });
+
+        allArticles.sort((a, b) => {
+          const dateA = parseArticleDate(a.date);
+          const dateB = parseArticleDate(b.date);
+          if (!dateA && !dateB) return 0;
+          if (!dateA) return 1;
+          if (!dateB) return -1;
+          return dateB.localeCompare(dateA);
+        });
+
+        feedArticles.value = allArticles;
+        await db.saveFeedCache(allArticles);
+
+        if (downloadAllFeedState.value && allArticles.length > 0) {
+          const allCached = await Promise.all(allArticles.map(a => db.getOpenedArticle(a.url)));
+          const hasMissing = allCached.some(c => !c);
+          if (hasMissing) await downloadAllFeedArticles();
+        }
+      } catch (e) {
+        feedError.value = e.message;
+      } finally {
+        feedLoading.value = false;
       }
     }
 
@@ -655,30 +850,6 @@ createApp({
       scrape(path);
     }
 
-    function buildProxyUrl(articleUrl) {
-      const path = articleUrl.replace(baseUrl + baseUrl, baseUrl).replace(baseUrl, '');
-      return proxyUrls[currentProxyIndex.value] + baseUrl + path;
-    }
-
-    async function fetchWithProxySwitch(url) {
-      let lastError = null;
-      for (let i = 0; i < proxyUrls.length; i++) {
-        const proxy = proxyUrls[i];
-        try {
-          const res = await fetch(proxy + url);
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          if (i !== currentProxyIndex.value) {
-            currentProxyIndex.value = i;
-            showToast('Switched to alternate method');
-          }
-          return res;
-        } catch (e) {
-          lastError = e;
-        }
-      }
-      throw lastError || new Error('All proxies failed');
-    }
-
     function parseUrduContent(doc) {
       const articleEl = doc.querySelector('article.post.post-listing.hentry.the-post');
       let urduPost = articleEl ? articleEl.querySelector('.UrduPost') : null;
@@ -713,8 +884,7 @@ createApp({
         }
 
         // Step 2: No cache — fetch from network
-        const proxyUrl = buildProxyUrl(article.url);
-        const res = await fetch(proxyUrl);
+        const res = await fetchWithRace(article.url);
         const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
 
@@ -726,7 +896,7 @@ createApp({
         }
         articleContent.value = parsed;
         if (activeChip.value === 'today') {
-          await db.saveOpenedArticle(article.url, parsed.title, parsed.paragraphs);
+          await db.saveOpenedArticle(article.url, parsed.title, parsed.paragraphs, article.author);
           await refreshCachedUrls();
         }
 
@@ -752,9 +922,9 @@ createApp({
       const shareText = title ? `*${title}*\n\n${body}` : body;
 
       if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-        await window.Capacitor.Plugins.Share.share({ text: shareText });
+        await window.Capacitor.Plugins.Share.share({ title: title, text: shareText });
       } else if (navigator.share) {
-        await navigator.share({ text: shareText });
+        await navigator.share({ title: title, text: shareText });
       } else {
         await navigator.clipboard.writeText(shareText);
         showToast('Article copied to clipboard');
@@ -765,6 +935,7 @@ createApp({
       // 1. Close search if open
       if (searchActive.value) { deactivateSearch(); return; }
       // 2. Close any open modal
+      if (filterSheetOpen.value) { filterSheetOpen.value = false; return; }
       if (textOptionsOpen.value) { closeTextOptions(); return; }
       if (authorSheetOpen.value) { closeAuthorSheet(); return; }
       // 3. If in article view, go back to the tab it came from
@@ -897,6 +1068,9 @@ createApp({
 
     watch(activeTab, () => {
       deactivateSearch();
+      if (activeTab.value === 'feed' && feedArticles.value.length === 0) {
+        loadFeed();
+      }
     });
 
     document.addEventListener('visibilitychange', () => {
@@ -970,7 +1144,7 @@ createApp({
       appReady, activeTab, activeChip, homeBarTitle, tabs, icons, articleBodyRef,
       searchActive, searchQuery, searchInputRef,theme, setTheme,
       activateSearch, deactivateSearch, clearSearch, onSearchEnter,
-      filteredHomeArticles, filteredSavedArticles,
+      filteredHomeArticles, filteredSavedArticles, filteredFeedArticles,
       toastMessage, toastVisible, activeArticle, openArticle, closeArticle,
       todayArticles, dateArticles, loading, error,
       dateInputRef, selectedDate, maxDate, selectedDateLabel,
@@ -980,14 +1154,15 @@ createApp({
       adjustFontSize, adjustLineHeight, setTextAlign,
       openTextOptions, closeTextOptions, fontSizeStep, lineHeightStep, scrollSpeedStep,
       autoScrollActive, toggleAutoScroll, scrollSpeed, adjustScrollSpeed,
-      downloadAllHomeState, toggleDownloadAllHome, downloadAllSavedState, toggleDownloadAllSaved,
+      downloadAllHomeState, toggleDownloadAllHome, downloadAllSavedState, toggleDownloadAllSaved, downloadAllFeedState, toggleDownloadAllFeed,
       cachedUrls, refreshCachedUrls, readUrls, refreshReadUrls,
       savedArticles, refreshSavedArticles, isArticleSaved, toggleSaveArticle, openSavedArticle,
-      authorSheetOpen, authorSearch, allAuthors, shareArticle,
+      filterSheetOpen, filterVisibility, sortBy, authorSheetOpen, authorSearch, allAuthors, shareArticle,
       followedAuthors, followedAuthorsList, filteredAuthors,
       openAuthorSheet, closeAuthorSheet, toggleFollowAuthor, scrapeAuthor, onAuthorSearchEnter,
       hasMoreAuthors, authorSentinelRef, skeletonLines, skeletonCards,
       authorArticles, activeAuthorLabel, authorHasMore, loadingMore, loadMoreAuthorArticles,
+      feedArticles, feedLoading, feedError, loadFeed,
     };
   }
 

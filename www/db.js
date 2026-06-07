@@ -1,12 +1,13 @@
 const db = (() => {
   const DB_NAME    = 'qaalim_db';
-  const DB_VERSION = 6;
+  const DB_VERSION = 7;
   const STORE      = 'articles';
   const CACHE      = 'daily_cache';
   const OPENED     = 'opened_cache';
   const READ       = 'read_cache';
   const FOLLOWED   = 'followed_authors';
   const SETTINGS   = 'settings';
+  const FEED_CACHE = 'feed_cache';
 
   let _db = null;
 
@@ -38,6 +39,9 @@ const db = (() => {
         if (!database.objectStoreNames.contains(SETTINGS)) {
           database.createObjectStore(SETTINGS, { keyPath: 'key' });
         }
+        if (!database.objectStoreNames.contains(FEED_CACHE)) {
+          database.createObjectStore(FEED_CACHE, { keyPath: 'key' });
+        }
       };
 
       request.onsuccess = (event) => {
@@ -63,6 +67,10 @@ const db = (() => {
 
   function getSettingsStore(mode = 'readonly') {
     return _db.transaction(SETTINGS, mode).objectStore(SETTINGS);
+  }
+
+  function getFeedCacheStore(mode = 'readonly') {
+    return _db.transaction(FEED_CACHE, mode).objectStore(FEED_CACHE);
   }
 
   function getOpenedStore(mode = 'readonly') {
@@ -121,8 +129,10 @@ const db = (() => {
     });
   }
   // ── Opened Cache ─────────────────────────────────────────────────
-  function saveOpenedArticle(url, title, paragraphs) {
-    return run(getOpenedStore('readwrite').put({ url, title, paragraphs, savedAt: Date.now() }));
+  function saveOpenedArticle(url, title, paragraphs, author) {
+    const data = { url, title, paragraphs, savedAt: Date.now() };
+    if (author) data.author = author;
+    return run(getOpenedStore('readwrite').put(data));
   }
 
   function getOpenedArticle(url) {
@@ -172,12 +182,35 @@ const db = (() => {
   }
 
   // ── Public API ───────────────────────────────────────────────────
+  async function deleteOpenedArticlesByAuthor(author) {
+    const store = getOpenedStore('readwrite');
+    const all = await run(store.getAll());
+    const authorLower = author.toLowerCase();
+    const toDelete = all.filter(a => a.author && a.author.toLowerCase() === authorLower).map(a => a.url);
+    for (const url of toDelete) {
+      await run(store.delete(url));
+    }
+  }
+
+  function saveFeedCache(articles) {
+    return run(getFeedCacheStore('readwrite').put({ key: 'feed', articles, savedAt: Date.now() }));
+  }
+
+  function getFeedCache() {
+    return run(getFeedCacheStore().get('feed'));
+  }
+
+  function clearFeedCache() {
+    return run(getFeedCacheStore('readwrite').clear());
+  }
+
   return {
     init,
     saveArticle, getAllArticles, deleteArticle, isArticleSaved, getArticle,
     saveDailyCache, getDailyCache, clearDailyCache,
-    saveOpenedArticle, getOpenedArticle, clearOpenedCache, getAllOpenedArticles,
+    saveOpenedArticle, getOpenedArticle, clearOpenedCache, getAllOpenedArticles, deleteOpenedArticlesByAuthor,
     saveTextSettings, getTextSettings,
+    saveFeedCache, getFeedCache, clearFeedCache,
     markRead, getAllRead, clearReadCache,
     followAuthor, unfollowAuthor, getAllFollowed,
   };

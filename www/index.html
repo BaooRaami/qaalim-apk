@@ -10,6 +10,24 @@
 </head>
 
 <body>
+  <template id="theme-picker">
+    <button class="theme-swatch" :class="{ active: modelValue === 'midnight' }" @click="$emit('update:modelValue', 'midnight')" title="Midnight" aria-label="Midnight theme">
+      <span class="theme-swatch-inner" style="background:#0a0a0a;"></span>
+    </button>
+    <button class="theme-swatch" :class="{ active: modelValue === 'warm-dark' }" @click="$emit('update:modelValue', 'warm-dark')" title="Warm Dark" aria-label="Warm dark theme">
+      <span class="theme-swatch-inner" style="background:#6b5344;"></span>
+    </button>
+    <button class="theme-swatch" :class="{ active: modelValue === 'paper' }" @click="$emit('update:modelValue', 'paper')" title="Paper" aria-label="Paper theme">
+      <span class="theme-swatch-inner" style="background:#f4ecd8;"></span>
+    </button>
+    <button class="theme-swatch" :class="{ active: modelValue === 'forest' }" @click="$emit('update:modelValue', 'forest')" title="Forest" aria-label="Forest theme">
+      <span class="theme-swatch-inner" style="background:#2d3a2d;"></span>
+    </button>
+    <button class="theme-swatch" :class="{ active: modelValue === 'slate' }" @click="$emit('update:modelValue', 'slate')" title="Slate" aria-label="Slate theme">
+      <span class="theme-swatch-inner" style="background:#2d3f56;"></span>
+    </button>
+  </template>
+
   <div id="app" v-cloak>
     <div class="app-shell" :class="{ 'app-loading': !appReady }">
       <div class="app-loader" v-if="!appReady">
@@ -19,7 +37,10 @@
       <header class="top-bar">
         <div class="top-bar-inner" v-if="!searchActive">
           <span class="app-wordmark">Qaalim</span>
-          <button class="icon-btn" @click="activateSearch()" v-html="icons.search" aria-label="Search" v-if="activeTab !== 'settings'"></button>
+          <div class="top-bar-actions">
+            <button class="icon-btn" @click="activateSearch()" v-html="icons.search" aria-label="Search" v-if="activeTab !== 'settings'"></button>
+            <button class="icon-btn" @click="filterSheetOpen = true" v-html="icons.filter" aria-label="Filter" v-if="activeTab !== 'settings'"></button>
+          </div>
         </div>
         <div class="top-bar-inner search-bar" v-else>
           <button class="icon-btn" @click="deactivateSearch()" v-html="icons.back" aria-label="Back"></button>
@@ -88,11 +109,40 @@
         <section class="page" v-show="activeTab === 'feed'">
           <div class="section-header">
             <h2 class="section-title">Your Feed</h2>
-            <button class="icon-btn" v-html="icons.filter" aria-label="Filter"></button>
           </div>
-          <div class="empty-state">
+          <div v-if="followedAuthors.size === 0" class="empty-state">
             <div class="empty-icon" v-html="icons.feed"></div>
-            <p class="empty-text">No feeds added yet.</p>
+            <p class="empty-text">Follow authors to see their articles here.</p>
+          </div>
+          <div v-else class="articles-section">
+            <div v-if="feedLoading" class="articles-list">
+              <div v-for="(c, i) in skeletonCards" :key="i" class="skeleton-card">
+                <div class="skeleton-card-title skeleton-shimmer"></div>
+                <div class="skeleton-card-meta">
+                  <div class="skeleton-card-author skeleton-shimmer"></div>
+                  <div class="skeleton-card-dot"></div>
+                  <div class="skeleton-card-date skeleton-shimmer"></div>
+                </div>
+              </div>
+            </div>
+            <p v-else-if="feedError" class="articles-status error">{{ feedError }}</p>
+            <div v-else-if="filteredFeedArticles.length === 0" class="empty-state">
+              <div class="empty-icon" v-html="icons.feed"></div>
+              <p class="empty-text">No articles found from followed authors.</p>
+            </div>
+            <div v-else class="articles-list">
+              <div
+                v-for="a in filteredFeedArticles"
+                :key="a.url" class="article-card" :class="{ unread: !readUrls.has(a.url) }" @click="openArticle(a)">
+                <span v-if="cachedUrls.has(a.url)" class="article-offline-mark" v-html="icons.offline"></span>
+                <h3 class="article-title">{{ a.title }}</h3>
+                <div class="article-meta">
+                  <span class="article-author">{{ a.author }}</span>
+                  <span class="article-sep"></span>
+                  <span class="article-date">{{ a.date }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
         <section class="page" v-show="activeTab === 'saved'">
@@ -124,23 +174,7 @@
           <div class="settings-group">
             <div class="settings-item">
               <span class="settings-item-label">Theme</span>
-              <div class="theme-picker-inline">
-                <button class="theme-swatch" :class="{ active: theme === 'midnight' }" @click="setTheme('midnight')" title="Midnight" aria-label="Midnight theme">
-                  <span class="theme-swatch-inner" style="background:#0a0a0a;"></span>
-                </button>
-                <button class="theme-swatch" :class="{ active: theme === 'warm-dark' }" @click="setTheme('warm-dark')" title="Warm Dark" aria-label="Warm dark theme">
-                  <span class="theme-swatch-inner" style="background:#6b5344;"></span>
-                </button>
-                <button class="theme-swatch" :class="{ active: theme === 'paper' }" @click="setTheme('paper')" title="Paper" aria-label="Paper theme">
-                  <span class="theme-swatch-inner" style="background:#f4ecd8;"></span>
-                </button>
-                <button class="theme-swatch" :class="{ active: theme === 'forest' }" @click="setTheme('forest')" title="Forest" aria-label="Forest theme">
-                  <span class="theme-swatch-inner" style="background:#2d3a2d;"></span>
-                </button>
-                <button class="theme-swatch" :class="{ active: theme === 'slate' }" @click="setTheme('slate')" title="Slate" aria-label="Slate theme">
-                  <span class="theme-swatch-inner" style="background:#2d3f56;"></span>
-                </button>
-              </div>
+              <theme-picker v-model="theme" @update:model-value="setTheme"></theme-picker>
             </div>
           </div>
 
@@ -154,8 +188,8 @@
             </div>
             <div class="settings-item">
               <span class="settings-item-label">Download All Articles (Feed)</span>
-              <div class="toggle-wrap">
-                <div class="toggle-track"></div>
+              <div class="toggle-wrap" @click="toggleDownloadAllFeed()">
+                <div class="toggle-track" :class="{ on: downloadAllFeedState }"></div>
               </div>
             </div>
             <div class="settings-item">
@@ -205,23 +239,7 @@
 
           <div class="text-option-row">
             <span class="text-option-label">Theme</span>
-            <div class="text-option-align">
-              <button class="theme-swatch" :class="{ active: theme === 'midnight' }" @click="setTheme('midnight')" title="Midnight" aria-label="Midnight theme">
-                <span class="theme-swatch-inner" style="background:#0a0a0a;"></span>
-              </button>
-              <button class="theme-swatch" :class="{ active: theme === 'warm-dark' }" @click="setTheme('warm-dark')" title="Warm Dark" aria-label="Warm dark theme">
-                <span class="theme-swatch-inner" style="background:#6b5344;"></span>
-              </button>
-              <button class="theme-swatch" :class="{ active: theme === 'paper' }" @click="setTheme('paper')" title="Paper" aria-label="Paper theme">
-                <span class="theme-swatch-inner" style="background:#f4ecd8;"></span>
-              </button>
-              <button class="theme-swatch" :class="{ active: theme === 'forest' }" @click="setTheme('forest')" title="Forest" aria-label="Forest theme">
-                <span class="theme-swatch-inner" style="background:#2d3a2d;"></span>
-              </button>
-              <button class="theme-swatch" :class="{ active: theme === 'slate' }" @click="setTheme('slate')" title="Slate" aria-label="Slate theme">
-                <span class="theme-swatch-inner" style="background:#2d3f56;"></span>
-              </button>
-            </div>
+            <theme-picker v-model="theme" @update:model-value="setTheme"></theme-picker>
           </div>
 
           <div class="text-option-row">
@@ -245,9 +263,9 @@
           <div class="text-option-row">
             <span class="text-option-label">Text Align</span>
             <div class="text-option-align">
-              <button class="align-btn" :class="{ active: textAlign === 'right' }" @click="setTextAlign('right')" v-html="icons.alignRight"></button>
-              <button class="align-btn" :class="{ active: textAlign === 'center' }" @click="setTextAlign('center')" v-html="icons.alignCenter"></button>
               <button class="align-btn" :class="{ active: textAlign === 'left' }" @click="setTextAlign('left')" v-html="icons.alignLeft"></button>
+              <button class="align-btn" :class="{ active: textAlign === 'center' }" @click="setTextAlign('center')" v-html="icons.alignCenter"></button>
+              <button class="align-btn" :class="{ active: textAlign === 'right' }" @click="setTextAlign('right')" v-html="icons.alignRight"></button>
               <button class="align-btn" :class="{ active: textAlign === 'justify' }" @click="setTextAlign('justify')" v-html="icons.alignJustify"></button>
             </div>
           </div>
@@ -261,6 +279,54 @@
             </div>
           </div>
 
+        </div>
+      </div>
+
+      <!-- Filter Sheet -->
+      <div class="sheet-overlay sheet-overlay--top" v-if="filterSheetOpen" @click.self="filterSheetOpen = false">
+        <div class="top-sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">Filter & Sort</div>
+          <div class="sheet-section">
+            <div class="sheet-section-label">Filter</div>
+            <div class="sheet-section-body">
+              <div class="filter-row">
+                <span class="filter-row-label">Visibility</span>
+                <div class="filter-row-options">
+                  <button class="filter-option-btn" :class="{ active: filterVisibility === 'all' }" @click="filterVisibility = 'all'">All</button>
+                  <button class="filter-option-btn" :class="{ active: filterVisibility === 'read' }" @click="filterVisibility = 'read'">Read</button>
+                  <button class="filter-option-btn" :class="{ active: filterVisibility === 'unread' }" @click="filterVisibility = 'unread'">Unread</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="sheet-divider"></div>
+          <div class="sheet-section">
+            <div class="sheet-section-label">Sort</div>
+            <div class="sheet-section-body">
+              <div class="filter-row">
+                <span class="filter-row-label">Date</span>
+                <div class="filter-row-options">
+                  <button class="filter-option-btn" :class="{ active: sortBy === 'date-desc' }" @click="sortBy = 'date-desc'">Latest</button>
+                  <button class="filter-option-btn" :class="{ active: sortBy === 'date-asc' }" @click="sortBy = 'date-asc'">Oldest</button>
+                </div>
+              </div>
+              <div class="filter-row">
+                <span class="filter-row-label">Authors</span>
+                <div class="filter-row-options">
+                  <button class="filter-option-btn" :class="{ active: sortBy === 'author-asc' }" @click="sortBy = 'author-asc'">A-Z</button>
+                  <button class="filter-option-btn" :class="{ active: sortBy === 'author-desc' }" @click="sortBy = 'author-desc'">Z-A</button>
+                </div>
+              </div>
+              <div class="filter-row">
+                <span class="filter-row-label">Title</span>
+                <div class="filter-row-options">
+                  <button class="filter-option-btn" :class="{ active: sortBy === 'title-asc' }" @click="sortBy = 'title-asc'">A-Z</button>
+                  <button class="filter-option-btn" :class="{ active: sortBy === 'title-desc' }" @click="sortBy = 'title-desc'">Z-A</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
